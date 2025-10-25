@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gradinita & Cresa</title>
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="application-name" content="Grădiniță">
+<meta name="apple-mobile-web-app-title" content="Grădiniță">
+<meta name="theme-color" content="#3498db">
+<meta name="msapplication-navbutton-color" content="#3498db">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="msapplication-starturl" content="/index.html">
+
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" type="image/png" sizes="192x192" href="icon-192.png">
+
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+<body>
+
+<div id="update-message" style="display: none; position: fixed; top: 0; left: 0; width: 100%; background: #f39c12; color: white; padding: 10px; text-align: center; z-index: 10000;">
+  O nouă versiune a aplicației este disponibilă!
+  <button id="reload-button" style="background: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer;">Actualizează</button>
+</div>
+
+<div class="container">
+    <div class="header-buttons">
+        <div class="header-left">
+            <button class="header-btn share-btn" onclick="shareApp()">📤 Distribuie</button>
+            <button class="header-btn donation-btn" onclick="showDonationModal()">💝 Donație</button>
+        </div>
+        <h1>Gradinita & Cresa</h1>
+        <div class="header-right">
+            <button class="header-btn info-btn" onclick="window.open('https://github.com/aswy13/gradinita', '_blank')">ℹ️ INFO</button>
+        </div>
+    </div>
+
+  <div class="month-navigation">
+    <button onclick="changeMonth(-1)">⬅</button>
+    <select id="monthSelectNav" onchange="changeMonthToSelected()">
+        <option value="0">Ianuarie</option><option value="1">Februarie</option><option value="2">Martie</option>
+        <option value="3">Aprilie</option><option value="4">Mai</option><option value="5">Iunie</option>
+        <option value="6">Iulie</option><option value="7">August</option><option value="8">Septembrie</option>
+        <option value="9">Octombrie</option><option value="10">Noiembrie</option><option value="11">Decembrie</option>
+    </select>
+    <input type="number" id="yearSelectNav" onchange="changeMonthToSelected()" value="2024" />
+    <button onclick="changeMonth(1)">➡</button>
+  </div>
+
+  <div id="calendar" class="calendar"></div>
+
+  <div class="report" id="childrenReports"></div>
+
+  <div class="button-group">
+    <button onclick="addChild()">➕ Adaugă copil</button>
+    <button onclick="resetData()">🗑️ Resetare date</button>
+    <button onclick="exportJSON()">💾 Export JSON</button>
+    <input type="file" id="importFile" style="display:none" accept=".json" onchange="importJSON(event)">
+    <button onclick="document.getElementById('importFile').click()">📂 Import JSON</button>
+  </div>
+
+  <div class="button-group">
+    <button onclick="exportExcel()">📊 Export Excel</button>
+    <button onclick="exportPDF()">📄 Export PDF</button>
+    <button onclick="showGeneralReportModal()">📈 Raport General</button>
+    <button onclick="showBackupManager()">💾 Manager Backup</button>
+  </div>
+
+  <div class="legend" id="legend"></div>
+    <div class="footer">
+        POWER BY ASWY | v3.0
+    </div>
+</div>
+
+<!-- Modal detalii zi -->
+<div id="dayModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeModal('dayModal')">&times;</span>
+        <h3>Detalii pentru ziua <span id="modalDayNumber"></span></h3>
+        <div class="day-popup-section">
+            <h4>Prezență și activități</h4>
+            <div id="childSelectionButtons"></div>
+        </div>
+        <div class="day-popup-section">
+            <h4>Notițe</h4>
+            <textarea id="noteTextarea" placeholder="Adaugă o notiță (ex: schemă de mâncare, observație)..."></textarea>
+            <button onclick="saveNote()">Salvează notița</button>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-danger" onclick="clearDaySelections()">Șterge toate selecțiile</button>
+            <button class="btn-primary" onclick="closeModal('dayModal')">Închide</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal setări copil -->
+<div id="settingsModal" class="modal">
+    <div class="modal-content large-modal">
+        <span class="modal-close" onclick="closeModal('settingsModal')">&times;</span>
+        <h3>Setări pentru <span id="settingsChildName"></span></h3>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Nume copil:</label>
+                <input type="text" id="editChildName" />
+            </div>
+            <div class="form-group">
+                <label>Instituție:</label>
+                <select id="editInstitution">
+                    <option value="Grădiniță">Grădiniță</option>
+                    <option value="Creșă">Creșă</option>
+                    <option value="Școală">Școală</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Data începerii:</label>
+                <input type="date" id="editStartDate" />
+            </div>
+            <div class="form-group">
+                <label>Cost standard (lei/zi):</label>
+                <input type="number" id="editDefaultRate" />
+            </div>
+            <div class="form-group">
+                <label>Culoare principală:</label>
+                <input type="color" id="editChildColor" />
+            </div>
+        </div>
+
+        <div class="day-popup-section">
+            <h4>Activități suplimentare</h4>
+            <div id="extraActivitiesContainer"></div>
+            <button class="btn-add-activity" onclick="addNewExtraActivity()">➕ Adaugă activitate</button>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn-danger" onclick="deleteChild()">🗑️ Șterge copil</button>
+            <button class="btn-success" onclick="saveChildSettings()">💾 Salvează</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal plăți -->
+<div id="paymentsModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeModal('paymentsModal')">&times;</span>
+        <h3>Istoric plăți <span id="paymentsChildName"></span> (<span id="paymentsMonth"></span>)</h3>
+        <div class="payment-inputs">
+            <div class="input-row">
+                <input type="number" id="newPaymentAmount" placeholder="Sumă"/>
+                <input type="date" id="newPaymentDate"/>
+            </div>
+            <div class="input-row">
+                <select id="newPaymentType">
+                    <option value="kindergarten">Grădiniță</option>
+                    <option value="extra">Activitate Suplimentară</option>
+                </select>
+                <input type="color" id="newPaymentColor" value="#2ecc71"/>
+            </div>
+            <button onclick="addPayment()">Adaugă plată</button>
+        </div>
+        <ul id="paymentList" class="payment-list"></ul>
+        <div class="payment-total">
+            Total plătit: <span id="paymentsTotal">0</span> lei
+        </div>
+    </div>
+</div>
+
+<!-- Modal raport general -->
+<div id="generalReportModal" class="modal">
+    <div class="modal-content large-modal">
+        <span class="modal-close" onclick="closeModal('generalReportModal')">&times;</span>
+        <h3>Raport General</h3>
+        <div class="report-options">
+            <div class="option-group">
+                <label>An:</label>
+                <select id="reportYearSelect"></select>
+            </div>
+            <div class="option-group">
+                <label>Lună (selectați mai multe cu Ctrl/Cmd):</label>
+                <select id="reportMonthSelect" multiple>
+                    <option value="-1">Toate lunile</option>
+                    <option value="0">Ianuarie</option><option value="1">Februarie</option><option value="2">Martie</option>
+                    <option value="3">Aprilie</option><option value="4">Mai</option><option value="5">Iunie</option>
+                    <option value="6">Iulie</option><option value="7">August</option><option value="8">Septembrie</option>
+                    <option value="9">Octombrie</option><option value="10">Noiembrie</option><option value="11">Decembrie</option>
+                </select>
+            </div>
+            <button onclick="generateGeneralReport()">Generează Raport</button>
+        </div>
+        <div id="generalReportContainer"></div>
+    </div>
+</div>
+
+<!-- Modal donație -->
+<div id="donationModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeModal('donationModal')">&times;</span>
+        <h3>💝 Sprijină acest proiect</h3>
+        <p>Dacă această aplicație ți-a fost utilă, poți să o sprijini pentru dezvoltarea și îmbunătățirea continuă.</p>
+        <div class="donation-buttons">
+            <button class="donation-btn buymeacoffee" onclick="openDonationLink('buymeacoffee')">☕ buymeacoffee</button>
+            <button class="donation-btn IBAM" onclick="openDonationLink('IBAM')">🏦 IBAM</button>
+        </div>
+        <p class="donation-thanks">Mulțumim pentru sprijin! 🙏</p>
+    </div>
+</div>
+
+<!-- Modal backup manager -->
+<div id="backupManagerModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+        <span class="modal-close" onclick="closeModal('backupManagerModal')">&times;</span>
+        <!-- Conținutul va fi generat din JavaScript -->
+    </div>
+</div>
+
+<!-- Modal bun venit -->
+<div id="welcomeModal" class="modal">
+    <div class="modal-content">
+        <span class="modal-close" onclick="closeWelcomeModal()">&times;</span>
+        <h2>Bun Venit în Aplicația Grădinița!</h2>
+        <p><strong>Noi funcționalități:</strong></p>
+        <ul>
+            <li>✅ Activități suplimentare multiple</li>
+            <li>✅ Tip instituție (Grădiniță, Creșă, Școală)</li>
+            <li>✅ Data începerii pentru fiecare copil</li>
+            <li>✅ Selecție multiplă activități</li>
+            <li>✅ Butoane pentru distribuire și donații</li>
+            <li>✅ Zile fără plată pentru vacanțe și absențe</li>
+        </ul>
+        <button class="btn-primary welcome-btn" onclick="closeWelcomeModal()">Înțeleg, să începem! 🚀</button>
+    </div>
+</div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
