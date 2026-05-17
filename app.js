@@ -1,11 +1,122 @@
 /* ================== VARIABILE & CONFIG ================== */
 const STORAGE_KEY = 'gradinitaDataV7';
+let longPressTimer = null;
+let isLongPressMode = false;
+let tempSelectedDays = [];
+let lastTouchedCell = null; // pentru glisare selecție pe mobil
 let today = new Date();
 let month = today.getMonth();
 let year = today.getFullYear();
 let selectedDays = [];
+let isMouseSelecting = false;
+let mouseSelectedDays = [];
+let lastHoveredCell = null;
 let chartInstance = null;
 let selectedChildIdForModal = null;
+
+/* ================== FUNCȚII PENTRU LONG PRESS ================== */
+const startLongPress = (day, elCell) => {
+    longPressTimer = setTimeout(() => {
+        // Dacă deja suntem în modul multi-select → finalizează selecția
+        if (isLongPressMode) {
+            finishMultiSelection(day, elCell);
+            if (navigator.vibrate) navigator.vibrate([30,40,30]); // feedback finalizare
+            return;
+        }
+
+        // Primul long-press → activează multi-select
+        isLongPressMode = true;
+        tempSelectedDays = [day];
+        elCell.style.outline = '3px solid #9b59b6';
+        elCell.classList.add('multi-selected');
+
+        // feedback haptic (dacă este disponibil)
+        if (navigator.vibrate) navigator.vibrate(40);
+
+        NotificationManager.show('Selecție multiplă activată — glisează pentru a adăuga zile.', 'info', 2500);
+    }, 500); // 500ms pentru long-press
+};
+
+const endLongPress = (day, elCell) => {
+    if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+    }
+
+    if (isLongPressMode) {
+        // Suntem în modul long-press - adăugăm ziua la selecție
+        if (!tempSelectedDays.includes(day)) {
+            tempSelectedDays.push(day);
+            elCell.style.outline = '3px solid #9b59b6';
+            elCell.classList.add('multi-selected');
+        }
+    } else {
+        // Nu suntem în modul long-press - afișăm modalul normal
+        selectedDays = [day];
+        showDayModal(day, elCell);
+    }
+};
+
+const finishMultiSelection = (day, elCell) => {
+    if (isLongPressMode && tempSelectedDays.length > 0) {
+        selectedDays = [...tempSelectedDays];
+        // feedback haptic la finalizare
+        if (navigator.vibrate) navigator.vibrate([30,40,30]);
+        showDayModal(day, elCell);
+        resetMultiSelection();
+    }
+};
+
+const resetMultiSelection = () => {
+    isLongPressMode = false;
+    tempSelectedDays = [];
+    lastTouchedCell = null;
+
+    // Curăță toate selecțiile temporare
+    document.querySelectorAll('.day.multi-selected').forEach(cell => {
+        cell.style.outline = '';
+        cell.classList.remove('multi-selected');
+    });
+};
+/* ================== MOUSE DRAG SELECT (DESKTOP) ================== */
+
+const startMouseSelection = (day, cell) => {
+    isMouseSelecting = true;
+    mouseSelectedDays = [day];
+
+    cell.style.outline = '3px solid #3498db';
+    cell.classList.add('multi-selected');
+};
+
+const moveMouseSelection = (cell) => {
+    if (!isMouseSelecting) return;
+    if (!cell || cell === lastHoveredCell) return;
+
+    lastHoveredCell = cell;
+
+    const day = parseInt(cell.dataset.day);
+    if (!day) return;
+
+    if (!mouseSelectedDays.includes(day)) {
+        mouseSelectedDays.push(day);
+        cell.style.outline = '3px solid #3498db';
+        cell.classList.add('multi-selected');
+    }
+};
+
+const endMouseSelection = (day, cell) => {
+    if (!isMouseSelecting) return;
+
+    isMouseSelecting = false;
+    selectedDays = [...mouseSelectedDays];
+
+    if (selectedDays.length > 0) {
+        showDayModal(day, cell);
+    }
+
+    mouseSelectedDays = [];
+    lastHoveredCell = null;
+};
 
 /* ================== NOTIFICĂRI ================== */
 class NotificationManager {
@@ -153,7 +264,152 @@ const renderCalendar = () => {
         if (isWeekend) day.classList.add('weekend');
 
         day.innerHTML = `<span class="day-number">${d}</span>`;
-        day.onclick = (e) => toggleCtrlSelection(d, day, e);
+        let touchTimer = null;
+        let isTouchSelecting = false;
+        let currentTouchedDay = null;
+
+        // ===== MOBILE MULTI SELECT FIX =====
+
+        day.addEventListener('touchstart', (e) => {
+
+            currentTouchedDay = d;
+
+            // pornim long press
+            touchTimer = setTimeout(() => {
+
+                isTouchSelecting = true;
+
+                clearMultiSelection();
+
+                if (!selectedDays.includes(d)) {
+                    selectedDays.push(d);
+
+                    day.classList.add('multi-selected');
+                    day.style.outline = '3px solid #9b59b6';
+                }
+
+                // feedback vibratie
+                if (navigator.vibrate) {
+                    navigator.vibrate(40);
+                }
+
+            }, 350);
+
+        }, { passive: true });
+
+
+        // ===== TOUCH MOVE =====
+
+        day.addEventListener('touchmove', (e) => {
+
+            // daca NU suntem in selectie -> lasam scroll normal
+            if (!isTouchSelecting) return;
+
+            e.preventDefault();
+
+            const touch = e.touches[0];
+
+            const element = document.elementFromPoint(
+                touch.clientX,
+                touch.clientY
+            );
+
+            const cell = element?.closest('.day');
+
+            if (!cell) return;
+
+            const touchedDay = parseInt(cell.dataset.day);
+
+            if (!selectedDays.includes(touchedDay)) {
+
+                selectedDays.push(touchedDay);
+
+                cell.classList.add('multi-selected');
+                cell.style.outline = '3px solid #9b59b6';
+            }
+
+        }, { passive: false });
+
+
+        // ===== TOUCH END =====
+
+        day.addEventListener('touchend', () => {
+
+            // daca user NU a tinut apasat suficient
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+
+            // tap simplu
+            if (!isTouchSelecting) {
+
+                clearMultiSelection();
+
+                selectedDays = [d];
+
+                showDayModal(d, day);
+
+                return;
+            }
+
+            // finalizeaza selectie multipla
+            if (isTouchSelecting) {
+
+                showDayModal(d, day);
+
+                isTouchSelecting = false;
+            }
+
+        });
+
+        day.addEventListener('click', (e) => {
+            // Pentru desktop și click rapid pe mobil
+            if (!isLongPressMode) {
+                toggleCtrlSelection(d, day, e);
+            }
+        });
+        // ================= MOUSE DRAG =================
+
+        // mousedown
+        day.addEventListener('mousedown', (e) => {
+            // doar click stanga
+            if (e.button !== 0) return;
+
+            // daca tine Ctrl, lasam vechiul comportament
+            if (e.ctrlKey || e.metaKey) return;
+
+            clearMultiSelection();
+            startMouseSelection(d, day);
+        });
+
+        // mouseover (drag)
+        day.addEventListener('mouseenter', () => {
+            moveMouseSelection(day);
+        });
+
+        // mouse up pe fiecare celula
+        day.addEventListener('mouseup', () => {
+            endMouseSelection(d, day);
+        });
+
+        // Adaugă eveniment pentru dublu-tap pentru a finaliza selecția multiplă
+        day.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            finishMultiSelection(d, day);
+        });
+
+        // Pentru touch - folosim double-tap
+        let lastTap = 0;
+        day.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+            if (tapLength < 500 && tapLength > 0 && isLongPressMode) {
+                e.preventDefault();
+                finishMultiSelection(d, day);
+            }
+            lastTap = currentTime;
+        });
         updateDayDisplay(day, d, data[key]);
         calendar.appendChild(day);
     }
@@ -167,6 +423,19 @@ const renderCalendar = () => {
     renderChildrenReports();
     renderLegend();
 };
+document.addEventListener('mouseup', () => {
+    if (isMouseSelecting) {
+        isMouseSelecting = false;
+
+        if (mouseSelectedDays.length > 0) {
+            selectedDays = [...mouseSelectedDays];
+            showDayModal(selectedDays[0], document.querySelector(`.day[data-day='${selectedDays[0]}']`));
+        }
+
+        mouseSelectedDays = [];
+        lastHoveredCell = null;
+    }
+});
 
 const updateDayDisplay = (cell, day, monthData) => {
     cell.style.backgroundColor = '';
@@ -283,22 +552,28 @@ const closeModal = (modalId) => {
     }
     if (modalId === 'dayModal') {
         clearMultiSelection();
+        lastTouchedCell = null;
     }
 };
 
 const clearMultiSelection = () => {
     selectedDays.forEach(d => {
         const cell = document.querySelector(`.day[data-day='${d}']`);
-        if (cell) cell.style.outline = '';
+        if (cell) {
+            cell.style.outline = '';
+            cell.classList.remove('multi-selected');
+        }
     });
-        selectedDays = [];
+    selectedDays = [];
+    resetMultiSelection();
 };
 
 const toggleCtrlSelection = (day, elCell, event) => {
+    // Pentru desktop - folosim Ctrl ca înainte
     const isCtrlKey = event.ctrlKey || event.metaKey;
-    const index = selectedDays.indexOf(day);
 
     if (isCtrlKey) {
+        const index = selectedDays.indexOf(day);
         if (index > -1) {
             selectedDays.splice(index, 1);
             elCell.style.outline = '';
@@ -307,20 +582,23 @@ const toggleCtrlSelection = (day, elCell, event) => {
             elCell.style.outline = '3px solid #3498db';
         }
     } else {
-        const isOpeningMulti = selectedDays.length > 1 && index > -1;
-        if (!isOpeningMulti) {
+        // Pentru click normal - resetăm și afișăm modalul pentru o singură zi
+        if (!isLongPressMode) {
             clearMultiSelection();
             selectedDays = [day];
-            elCell.style.outline = '3px solid #3498db';
+            showDayModal(day, elCell);
         }
-        showDayModal(day, elCell);
     }
 };
 
 const showDayModal = (day, elCell) => {
     const modalDayNumber = document.getElementById('modalDayNumber');
     if (modalDayNumber) {
-        modalDayNumber.textContent = selectedDays.length > 1 ? selectedDays.join(', ') : day;
+        if (selectedDays.length > 1) {
+            modalDayNumber.textContent = `${selectedDays.length} zile selectate (${selectedDays.join(', ')})`;
+        } else {
+            modalDayNumber.textContent = day;
+        }
     }
 
     const data = loadData();
@@ -1220,15 +1498,25 @@ const showDonationModal = () => {
     openModal('donationModal');
 };
 
+// 🔥 Functie pentru deschidere IBAN modal
 const openDonationLink = (platform) => {
-    const links = {
-        'buymeacoffee': 'https://buymeacoffee.com/aswy',
-        'IBAM': 'https://RO31INGB0000999901856836'
-    };
+    if (platform === 'buymeacoffee') {
+        window.open('https://buymeacoffee.com/aswy', '_blank');
+        return;
+    }
 
-    window.open(links[platform], '_blank');
-    NotificationManager.show('Mulțumim pentru sprijin! ❤️', 'success');
-    closeModal('donationModal');
+    if (platform === 'IBAN') {
+        openModal('ibanModal');
+    }
+};
+
+// 🔥 Copy IBAN
+const copyIBAN = () => {
+    const iban = 'RO31INGB0000999901856836';
+
+    navigator.clipboard.writeText(iban).then(() => {
+        NotificationManager.show('IBAN copiat! 📋', 'success');
+    });
 };
 
 /* ================== BACKUP MANAGER ================== */
