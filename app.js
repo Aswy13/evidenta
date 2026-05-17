@@ -267,11 +267,12 @@ const renderCalendar = () => {
         let touchTimer = null;
         let isTouchSelecting = false;
         let currentTouchedDay = null;
+        let touchMoved = false;
 
         // ===== MOBILE MULTI SELECT FIX =====
 
         day.addEventListener('touchstart', (e) => {
-
+            touchMoved = false;
             currentTouchedDay = d;
 
             // pornim long press
@@ -301,7 +302,7 @@ const renderCalendar = () => {
         // ===== TOUCH MOVE =====
 
         day.addEventListener('touchmove', (e) => {
-
+            touchMoved = true;
             // daca NU suntem in selectie -> lasam scroll normal
             if (!isTouchSelecting) return;
 
@@ -342,6 +343,12 @@ const renderCalendar = () => {
             }
 
             // tap simplu
+            // daca user facea scroll -> ignoram
+            if (touchMoved && !isTouchSelecting) {
+                return;
+            }
+
+            // tap simplu real
             if (!isTouchSelecting) {
 
                 clearMultiSelection();
